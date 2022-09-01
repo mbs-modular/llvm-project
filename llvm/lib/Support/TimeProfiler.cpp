@@ -32,6 +32,7 @@ using std::chrono::duration;
 using std::chrono::duration_cast;
 using std::chrono::microseconds;
 using std::chrono::steady_clock;
+using std::chrono::system_clock;
 using std::chrono::time_point;
 using std::chrono::time_point_cast;
 
@@ -102,7 +103,7 @@ struct TimeTraceProfilerEntry {
 
 struct llvm::TimeTraceProfiler {
   TimeTraceProfiler(unsigned TimeTraceGranularity = 0, StringRef ProcName = "")
-      : BeginningOfTime(ClockType::now()), StartTime(ClockType::now()),
+      : BeginningOfTime(system_clock::now()), StartTime(ClockType::now()),
         ProcName(ProcName), Pid(sys::Process::getProcessId()),
         Tid(llvm::get_threadid()), TimeTraceGranularity(TimeTraceGranularity) {
     llvm::get_thread_name(ThreadName);
@@ -275,7 +276,9 @@ struct llvm::TimeTraceProfiler {
   SmallVector<TimeTraceProfilerEntry, 16> Stack;
   SmallVector<TimeTraceProfilerEntry, 128> Entries;
   StringMap<CountAndDurationType> CountAndTotalPerName;
-  const TimePointType BeginningOfTime;
+  // System clock time when the session was begun.
+  const time_point<system_clock> BeginningOfTime;
+  // Profiling clock time when the session was begun.
   const TimePointType StartTime;
   const std::string ProcName;
   const sys::Process::Pid Pid;
