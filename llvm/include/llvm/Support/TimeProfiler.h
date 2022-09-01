@@ -5,12 +5,77 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// This provides lightweight and dependency-free machinery to trace execution
+// time around arbitrary code. Two API flavors are available.
+//
+// The primary API uses a RAII object to trigger tracing:
+//
+// \code
+//   {
+//     TimeTraceScope scope("my_event_name");
+//     ...my code...
+//   }
+// \endcode
+//
+// If the code to be profiled does not have a natural lexical scope then
+// it is also possible to start and end events with respect to an implicit
+// per-thread stack of profiling entries:
+//
+// \code
+//   timeTraceProfilerBegin("my_event_name");
+//   ...my code...
+//   timeTraceProfilerEnd();  // must be called on all control flow paths
+// \endcode
+//
+// Time profiling entries can be given an arbitrary name and, optionally,
+// an arbitrary 'detail' string. The resulting trace will include 'Total'
+// entries summing the time spent for each name. Thus, it's best to choose
+// names to be fairly generic, and rely on the detail field to capture
+// everything else of interest.
+//
+// To avoid lifetime issues name and detail strings are copied into the event
+// entries at their time of creation. Care should be taken to make string
+// construction cheap to prevent 'Heisenperf' effects. In particular, the
+// 'detail' argument may be a string-returning closure:
+//
+// \code
+//   int n;
+//   {
+//     TimeTraceScope scope("my_event_name",
+//                          [n]() { return (Twine("x=") + Twine(n)).str(); });
+//     ...my code...
+//   }
+// \endcode
+// The closure will not be called if tracing is disabled. Otherwise, the
+// resulting string will be directly moved into the entry.
+//
+// Sub-threads should be wrapped in timeTraceProfilerInitialize and
+// timeTraceProfilerFinishThread calls. The main process should
+// be wrapped in timeTraceProfilerInitialize, timeTraceProfileWrite and
+// timeTraceProfilerCleanup calls.
+//
+// Timestamps come from std::chrono::stable_clock. Note that threads need
+// not see the same time from that clock, and the resolution may not be
+// the best available.
+//
+// Currently, the best trace viewer is provided by the Google Perfetto
+// project, a successor of Chrome's tracing, see http://ui.perfetto.dev.
+//
+// Future work:
+//  - Support akin to LLVM_DEBUG for runtime enable/disable of named tracing
+//    families for non-debug builds which wish to support optional tracing.
+//  - Evaluate the detail closures at profile write time to avoid
+//    stringification costs interfering with tracing.
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef LLVM_SUPPORT_TIMEPROFILER_H
 #define LLVM_SUPPORT_TIMEPROFILER_H
 
-#include "llvm/Support/Error.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Error.h"
 
 namespace llvm {
 
@@ -39,7 +104,7 @@ inline bool timeTraceProfilerEnabled() {
 /// Write profiling data to output stream.
 /// Data produced is JSON, in Chrome "Trace Event" format, see
 /// https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview
-void timeTraceProfilerWrite(raw_pwrite_stream &OS);
+void timeTraceProfilerWrite(raw_ostream &OS);
 
 /// Write profiling data to a file.
 /// The function will write to \p PreferredFileName if provided, if not
@@ -53,7 +118,7 @@ Error timeTraceProfilerWrite(StringRef PreferredFileName,
 /// Profiler copies the string data, so the pointers can be given into
 /// temporaries. Time sections can be hierarchical; every Begin must have a
 /// matching End pair but they can nest.
-void timeTraceProfilerBegin(StringRef Name, StringRef Detail);
+void timeTraceProfilerBegin(StringRef Name, StringRef Detail = {});
 void timeTraceProfilerBegin(StringRef Name,
                             llvm::function_ref<std::string()> Detail);
 
@@ -72,11 +137,7 @@ struct TimeTraceScope {
   TimeTraceScope(TimeTraceScope &&) = delete;
   TimeTraceScope &operator=(TimeTraceScope &&) = delete;
 
-  TimeTraceScope(StringRef Name) {
-    if (getTimeTraceProfilerInstance() != nullptr)
-      timeTraceProfilerBegin(Name, StringRef(""));
-  }
-  TimeTraceScope(StringRef Name, StringRef Detail) {
+  TimeTraceScope(StringRef Name, StringRef Detail = {}) {
     if (getTimeTraceProfilerInstance() != nullptr)
       timeTraceProfilerBegin(Name, Detail);
   }
