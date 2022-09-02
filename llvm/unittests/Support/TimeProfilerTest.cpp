@@ -20,11 +20,12 @@
 using namespace llvm;
 
 namespace {
-void setup() {
+
+void setupProfiler() {
   timeTraceProfilerInitialize(/*TimeTraceGranularity=*/0, "test");
 }
 
-std::string teardown() {
+std::string teardownProfiler() {
   std::string json;
   raw_string_ostream os(json);
   timeTraceProfilerWrite(os);
@@ -33,24 +34,31 @@ std::string teardown() {
 }
 
 TEST(TimeProfiler, Scope_Smoke) {
-  setup();
+  setupProfiler();
 
   { TimeTraceScope scope("event", "detail"); }
 
-  std::string json = teardown();
+  std::string json = teardownProfiler();
   ASSERT_TRUE(json.find(R"("name":"event")") != std::string::npos);
   ASSERT_TRUE(json.find(R"("detail":"detail")") != std::string::npos);
 }
 
 TEST(TimeProfiler, Begin_End_Smoke) {
-  setup();
+  setupProfiler();
 
   timeTraceProfilerBegin("event", "detail");
   timeTraceProfilerEnd();
 
-  std::string json = teardown();
+  std::string json = teardownProfiler();
   ASSERT_TRUE(json.find(R"("name":"event")") != std::string::npos);
   ASSERT_TRUE(json.find(R"("detail":"detail")") != std::string::npos);
+}
+
+TEST(TimeProfiler, Begin_End_Disabled) {
+  // Nothing should be observable here. The test is really just making sure
+  // we've not got a stray nullptr deref.
+  timeTraceProfilerBegin("event", "detail");
+  timeTraceProfilerEnd();
 }
 
 } // namespace
