@@ -50,17 +50,20 @@
 // The closure will not be called if tracing is disabled. Otherwise, the
 // resulting string will be directly moved into the entry.
 //
-// Sub-threads should be wrapped in timeTraceProfilerInitialize and
-// timeTraceProfilerFinishThread calls. The main process should
-// be wrapped in timeTraceProfilerInitialize, timeTraceProfileWrite and
-// timeTraceProfilerCleanup calls.
+// The main process should begin with a timeTraceProfilerInitialize, and
+// finish with timeTraceProfileWrite and timeTraceProfilerCleanup calls.
+// Each new thread should begin with a timeTraceProfilerInitialize, and
+// finish with a timeTraceProfilerFinishThread call.
 //
 // Timestamps come from std::chrono::stable_clock. Note that threads need
 // not see the same time from that clock, and the resolution may not be
 // the best available.
 //
-// Currently, the best trace viewer is provided by the Google Perfetto
-// project, a successor of Chrome's tracing, see http://ui.perfetto.dev.
+// Currently, there are a number of compatible viewers:
+//  - chrome://tracing is the original chromium trace viewer.
+//  - http://ui.perfetto.dev is the replacement for the above, under active
+//    development by Google as part of the 'Perfetto' project.
+//  - https://www.speedscope.app/ has also been reported as an option.
 //
 // Future work:
 //  - Support akin to LLVM_DEBUG for runtime enable/disable of named tracing
