@@ -121,7 +121,7 @@ Error timeTraceProfilerWrite(StringRef PreferredFileName,
 /// Profiler copies the string data, so the pointers can be given into
 /// temporaries. Time sections can be hierarchical; every Begin must have a
 /// matching End pair but they can nest.
-void timeTraceProfilerBegin(StringRef Name, StringRef Detail = {});
+void timeTraceProfilerBegin(StringRef Name, StringRef Detail);
 void timeTraceProfilerBegin(StringRef Name,
                             llvm::function_ref<std::string()> Detail);
 
@@ -140,7 +140,11 @@ struct TimeTraceScope {
   TimeTraceScope(TimeTraceScope &&) = delete;
   TimeTraceScope &operator=(TimeTraceScope &&) = delete;
 
-  TimeTraceScope(StringRef Name, StringRef Detail = {}) {
+  TimeTraceScope(StringRef Name) {
+    if (getTimeTraceProfilerInstance() != nullptr)
+      timeTraceProfilerBegin(Name, StringRef(""));
+  }
+  TimeTraceScope(StringRef Name, StringRef Detail) {
     if (getTimeTraceProfilerInstance() != nullptr)
       timeTraceProfilerBegin(Name, Detail);
   }
