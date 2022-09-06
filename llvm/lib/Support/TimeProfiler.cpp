@@ -71,17 +71,10 @@ struct TimeTraceProfilerEntry {
   const std::string Name;
   const std::string Detail;
 
-  /// Constructs an empty entry with start time at the beginning of epoch.
-  TimeTraceProfilerEntry() = default;
-
-  /// Constructs entry starting from now with Name and empty Detail.
-  explicit TimeTraceProfilerEntry(std::string &&Name)
-      : Start(ClockType::now()), Name(std::move(Name)) {}
-
-  /// Constructs entry starting from now with Name and Detail.
-  TimeTraceProfilerEntry(std::string &&Name, std::string &&Detail)
-      : Start(ClockType::now()), Name(std::move(Name)),
-        Detail(std::move(Detail)) {}
+  TimeTraceProfilerEntry(TimePointType &&S, TimePointType &&E, std::string &&N,
+                         std::string &&Dt)
+      : Start(std::move(S)), End(std::move(E)), Name(std::move(N)),
+        Detail(std::move(Dt)) {}
 
   // Calculate timings for FlameGraph. Cast time points to microsecond precision
   // rather than casting duration. This avoids truncation issues causing inner
@@ -109,7 +102,10 @@ struct llvm::TimeTraceProfiler {
     llvm::get_thread_name(ThreadName);
   }
 
-  void begin(TimeTraceProfilerEntry &&Entry) { Stack.emplace_back(Entry); }
+  void begin(std::string Name, llvm::function_ref<std::string()> Detail) {
+    Stack.emplace_back(ClockType::now(), TimePointType(), std::move(Name),
+                       Detail());
+  }
 
   void end() {
     assert(!Stack.empty() && "Must call begin() first");
@@ -347,13 +343,14 @@ Error llvm::timeTraceProfilerWrite(StringRef PreferredFileName,
 
 void llvm::timeTraceProfilerBegin(StringRef Name, StringRef Detail) {
   if (TimeTraceProfilerInstance != nullptr)
-    TimeTraceProfilerInstance->begin({std::string(Name), std::string(Detail)});
+    TimeTraceProfilerInstance->begin(std::string(Name),
+                                     [&]() { return std::string(Detail); });
 }
 
 void llvm::timeTraceProfilerBegin(StringRef Name,
                                   llvm::function_ref<std::string()> Detail) {
   if (TimeTraceProfilerInstance != nullptr)
-    TimeTraceProfilerInstance->begin({std::string(Name), Detail()});
+    TimeTraceProfilerInstance->begin(std::string(Name), Detail);
 }
 
 void llvm::timeTraceProfilerEnd() {

@@ -1,11 +1,11 @@
-//===- unittests/TimerTest.cpp - Timer tests ------------------------------===//
+//===- unittests/TimeProfilerTest.cpp - TimeProfiler tests ----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// These are bare-minimum 'smake' tests of the time profiler. Not tested:
+// These are bare-minimum 'smoke' tests of the time profiler. Not tested:
 //  - multi-threading
 //  - 'Total' entries
 //  - elision of short or ill-formed entries
