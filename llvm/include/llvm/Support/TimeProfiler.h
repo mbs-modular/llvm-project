@@ -107,7 +107,7 @@ inline bool timeTraceProfilerEnabled() {
 /// Write profiling data to output stream.
 /// Data produced is JSON, in Chrome "Trace Event" format, see
 /// https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview
-void timeTraceProfilerWrite(raw_ostream &OS);
+void timeTraceProfilerWrite(raw_pwrite_stream &OS);
 
 /// Write profiling data to a file.
 /// The function will write to \p PreferredFileName if provided, if not

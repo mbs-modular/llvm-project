@@ -145,7 +145,7 @@ struct llvm::TimeTraceProfiler {
 
   // Write events from this TimeTraceProfilerInstance and
   // ThreadTimeTraceProfilerInstances.
-  void write(raw_ostream &OS) {
+  void write(raw_pwrite_stream &OS) {
     // Acquire Mutex as reading ThreadTimeTraceProfilerInstances.
     auto &Instances = getTimeTraceProfilerInstances();
     std::lock_guard<std::mutex> Lock(Instances.Lock);
@@ -315,7 +315,7 @@ void llvm::timeTraceProfilerFinishThread() {
   TimeTraceProfilerInstance = nullptr;
 }
 
-void llvm::timeTraceProfilerWrite(raw_ostream &OS) {
+void llvm::timeTraceProfilerWrite(raw_pwrite_stream &OS) {
   assert(TimeTraceProfilerInstance != nullptr &&
          "Profiler object can't be null");
   TimeTraceProfilerInstance->write(OS);
