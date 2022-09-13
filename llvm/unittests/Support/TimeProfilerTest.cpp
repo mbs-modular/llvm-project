@@ -26,11 +26,11 @@ void setupProfiler() {
 }
 
 std::string teardownProfiler() {
-  std::string json;
-  raw_string_ostream os(json);
+  SmallVector<char, 1024> smallVector;
+  raw_svector_ostream os(smallVector);
   timeTraceProfilerWrite(os);
   timeTraceProfilerCleanup();
-  return json;
+  return os.str().str();
 }
 
 TEST(TimeProfiler, Scope_Smoke) {
