@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This provides lightweight and dependency-free machinery to trace execution
-// time around arbitrary code. Two API flavors are available.
+// time around arbitrary code. Three API flavors are available.
 //
 // The primary API uses a RAII object to trigger tracing:
 //
@@ -26,6 +26,21 @@
 //   timeTraceProfilerBegin("my_event_name");
 //   ...my code...
 //   timeTraceProfilerEnd();  // must be called on all control flow paths
+// \endcode
+//
+// Finally, it is also possible to manually create, begin and complete time
+// profiling entries. This API allows an entry to be created in one
+// context, stored, then completed in another. The completing context need not
+// be on the same thread as the creating context:
+//
+// \code
+//   auto entry = timeTraceProfilerBeginEntry("my_event_name");
+//   ...
+//   // Possibly on a different thread
+//   entry.begin(); // optional, if the event start time should be decoupled
+//                  // from entry creation
+//   ...my code...
+//   timeTraceProfilerEndEntry(std::move(entry));
 // \endcode
 //
 // Time profiling entries can be given an arbitrary name and, optionally,
@@ -50,14 +65,25 @@
 // The closure will not be called if tracing is disabled. Otherwise, the
 // resulting string will be directly moved into the entry.
 //
+// If string construction is a significant cost it is possible to construct
+// the entry outside of the critical section:
+//
+// \code
+//   auto entry = timeTraceProfilerBeginEntry("my_event_name",
+//                                            [=]() { ... expensive ... });
+//   ...non critical code...
+//   entry.begin();
+//   ...my critical code...
+//   timeTraceProfilerEndEntry(std::move(entry));
+// \endcode
+//
 // The main process should begin with a timeTraceProfilerInitialize, and
 // finish with timeTraceProfileWrite and timeTraceProfilerCleanup calls.
 // Each new thread should begin with a timeTraceProfilerInitialize, and
 // finish with a timeTraceProfilerFinishThread call.
 //
-// Timestamps come from std::chrono::stable_clock. Note that threads need
-// not see the same time from that clock, and the resolution may not be
-// the best available.
+// Timestamps come from std::chrono::high_resolution_clock, so all threads
+// see the same time at the highest available resolution.
 //
 // Currently, there are a number of compatible viewers:
 //  - chrome://tracing is the original chromium trace viewer.
@@ -78,6 +104,8 @@
 
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/Error.h"
+
+#include <chrono>
 
 namespace llvm {
 
@@ -126,6 +154,64 @@ void timeTraceProfilerBegin(StringRef Name,
 
 /// Manually end the last time section.
 void timeTraceProfilerEnd();
+
+/// Represents an open or completed time section entry to be captured.
+struct TimeTraceProfilerEntry {
+  using ClockType = std::chrono::high_resolution_clock;
+  using TimePointType = std::chrono::time_point<ClockType>;
+
+  TimePointType Start;
+  TimePointType End;
+  const std::string Name;
+  const std::string Detail;
+
+  TimeTraceProfilerEntry() : Start(TimePointType()), End(TimePointType()) {}
+
+  TimeTraceProfilerEntry(TimePointType &&S, TimePointType &&E, std::string &&N,
+                         std::string &&Dt)
+      : Start(std::move(S)), End(std::move(E)), Name(std::move(N)),
+        Detail(std::move(Dt)) {}
+
+  // Calculate timings for FlameGraph. Cast time points to microsecond precision
+  // rather than casting duration. This avoids truncation issues causing inner
+  // scopes overruning outer scopes.
+  ClockType::rep getFlameGraphStartUs(TimePointType StartTime) const {
+    return (std::chrono::time_point_cast<std::chrono::microseconds>(Start) -
+            std::chrono::time_point_cast<std::chrono::microseconds>(StartTime))
+        .count();
+  }
+
+  ClockType::rep getFlameGraphDurUs() const {
+    return (std::chrono::time_point_cast<std::chrono::microseconds>(End) -
+            std::chrono::time_point_cast<std::chrono::microseconds>(Start))
+        .count();
+  }
+
+  /// Resets the starting time of this entry to now. By default the entry
+  /// will have taken its start time to be the time of entry construction.
+  /// But if the entry has been constructed early so as to keep detail string
+  /// construction out of the measured section then this method can be called
+  /// to signal measurement should begin. If the time profiler is not
+  /// initialized, the overhead is a single branch.
+  void begin();
+};
+
+/// Returns an entry with starting time of now and Name and Detail.
+/// The entry can later be added to the trace by timeTraceProfilerEndEntry
+/// below when the tracked event has completed. If the time profiler is not
+/// initialized, the overhead is constructing an empty entry without any
+/// use of the global clock.
+TimeTraceProfilerEntry timeTraceProfilerBeginEntry(StringRef Name,
+                                                   StringRef Detail = {});
+TimeTraceProfilerEntry
+timeTraceProfilerBeginEntry(StringRef Name,
+                            llvm::function_ref<std::string()> Detail);
+
+/// Ends the Entry returned by timeTraceProfilerBeginEntry above. The entry is
+/// recorded by the current thread, which need not be the same as the thread
+/// which executed the original timeTraceProfilerBeginEntry call. If the time
+/// profiler is not initialized, the overhead is a single branch.
+void timeTraceProfilerEndEntry(TimeTraceProfilerEntry &&Entry);
 
 /// The TimeTraceScope is a helper class to call the begin and end functions
 /// of the time trace profiler.  When the object is constructed, it begins

@@ -55,44 +55,12 @@ TimeTraceProfiler *llvm::getTimeTraceProfilerInstance() {
   return TimeTraceProfilerInstance;
 }
 
-namespace {
-
-using ClockType = steady_clock;
-using TimePointType = time_point<ClockType>;
+using ClockType = TimeTraceProfilerEntry::ClockType;
+using TimePointType = TimeTraceProfilerEntry::TimePointType;
 using DurationType = duration<ClockType::rep, ClockType::period>;
 using CountAndDurationType = std::pair<size_t, DurationType>;
 using NameAndCountAndDurationType =
     std::pair<std::string, CountAndDurationType>;
-
-/// Represents an open or completed time section entry to be captured.
-struct TimeTraceProfilerEntry {
-  const TimePointType Start;
-  TimePointType End;
-  const std::string Name;
-  const std::string Detail;
-
-  TimeTraceProfilerEntry(TimePointType &&S, TimePointType &&E, std::string &&N,
-                         std::string &&Dt)
-      : Start(std::move(S)), End(std::move(E)), Name(std::move(N)),
-        Detail(std::move(Dt)) {}
-
-  // Calculate timings for FlameGraph. Cast time points to microsecond precision
-  // rather than casting duration. This avoids truncation issues causing inner
-  // scopes overruning outer scopes.
-  ClockType::rep getFlameGraphStartUs(TimePointType StartTime) const {
-    return (time_point_cast<microseconds>(Start) -
-            time_point_cast<microseconds>(StartTime))
-        .count();
-  }
-
-  ClockType::rep getFlameGraphDurUs() const {
-    return (time_point_cast<microseconds>(End) -
-            time_point_cast<microseconds>(Start))
-        .count();
-  }
-};
-
-} // anonymous namespace
 
 struct llvm::TimeTraceProfiler {
   TimeTraceProfiler(unsigned TimeTraceGranularity = 0, StringRef ProcName = "")
@@ -109,7 +77,11 @@ struct llvm::TimeTraceProfiler {
 
   void end() {
     assert(!Stack.empty() && "Must call begin() first");
-    TimeTraceProfilerEntry &E = Stack.back();
+    end(std::move(Stack.back()));
+    Stack.pop_back();
+  }
+
+  void end(TimeTraceProfilerEntry &&E) {
     E.End = ClockType::now();
 
     // Check that end times monotonically increase.
@@ -139,8 +111,6 @@ struct llvm::TimeTraceProfiler {
       CountAndTotal.first++;
       CountAndTotal.second += Duration;
     }
-
-    Stack.pop_back();
   }
 
   // Write events from this TimeTraceProfilerInstance and
@@ -356,4 +326,32 @@ void llvm::timeTraceProfilerBegin(StringRef Name,
 void llvm::timeTraceProfilerEnd() {
   if (TimeTraceProfilerInstance != nullptr)
     TimeTraceProfilerInstance->end();
+}
+
+void llvm::TimeTraceProfilerEntry::begin() {
+  if (TimeTraceProfilerInstance != nullptr)
+    Start = ClockType::now();
+}
+
+TimeTraceProfilerEntry llvm::timeTraceProfilerBeginEntry(StringRef Name,
+                                                         StringRef Detail) {
+  if (TimeTraceProfilerInstance != nullptr)
+    return {ClockType::now(), TimePointType(), std::string(Name),
+            std::string(Detail)};
+  // The default constructor does not invoke now().
+  return {};
+}
+
+TimeTraceProfilerEntry
+llvm::timeTraceProfilerBeginEntry(StringRef Name,
+                                  llvm::function_ref<std::string()> Detail) {
+  if (TimeTraceProfilerInstance != nullptr)
+    return {ClockType::now(), TimePointType(), std::string(Name), Detail()};
+  // The default constructor does not invoke now().
+  return {};
+}
+
+void llvm::timeTraceProfilerEndEntry(TimeTraceProfilerEntry &&Entry) {
+  if (TimeTraceProfilerInstance != nullptr)
+    TimeTraceProfilerInstance->end(std::move(Entry));
 }
