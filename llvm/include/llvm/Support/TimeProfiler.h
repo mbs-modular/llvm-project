@@ -157,6 +157,16 @@ void timeTraceProfilerEnd();
 
 /// Represents an open or completed time section entry to be captured.
 struct TimeTraceProfilerEntry {
+  // We use the high_resolution_clock for maximum precision.
+  // It may not be steady (ClockType::is_steady may be false), which means
+  // it is possible for profiles to yield invalid durations during leap
+  // second transitions or other system clock adjustments. This rare glitch
+  // seems worthwhile in exchange for the precision.
+  // Under linux glibc++ the high_resolution_clock is consistent across threads
+  // which is necessary for building cross-thread entries.
+  // It is unknown whether that's the case under Windows, and the C++ standard
+  // does not appear to impose any thread consistency on any of the clocks.
+
   using ClockType = std::chrono::high_resolution_clock;
   using TimePointType = std::chrono::time_point<ClockType>;
 
